@@ -156,6 +156,74 @@
       background: #f3e5c8;
     }
 
+    #resetDone {
+      border-color: var(--ink-soft);
+      color: var(--ink-soft);
+    }
+
+    #resetDone:hover {
+      background: var(--ink-soft);
+      color: #fff;
+    }
+
+    .progress-wrap {
+      max-width: 1100px;
+      margin: 14px auto 0;
+      padding: 0 16px;
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--maroon-dark);
+      margin-bottom: 6px;
+    }
+
+    .progress-track {
+      background: var(--border);
+      border-radius: 20px;
+      height: 10px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--green), #4a9d74);
+      border-radius: 20px;
+      transition: width 0.3s ease;
+    }
+
+    .done-check {
+      flex-shrink: 0;
+      width: 17px;
+      height: 17px;
+      cursor: pointer;
+      accent-color: var(--green);
+    }
+
+    .toc-item.is-done {
+      background: #e9f3ec;
+      border-color: #bfe0cc;
+    }
+
+    .toc-item.is-done .toc-text {
+      text-decoration: line-through;
+      color: var(--ink-soft);
+    }
+
+    .qcard.is-done > .qsummary {
+      background: #e9f3ec;
+    }
+
+    .qcard.is-done > .qsummary .qtext {
+      text-decoration: line-through;
+      color: var(--ink-soft);
+    }
+
     .toc-num {
       font-weight: 700;
       color: var(--maroon);
@@ -557,6 +625,17 @@
     <input type="text" id="searchBox" placeholder="🔍 প্রশ্ন খুঁজুন (যেমন: পলাশি, ভাষা আন্দোলন, ১৯৭১)">
     <button id="expandAll">সব খুলুন</button>
     <button id="collapseAll">সব বন্ধ করুন</button>
+    <button id="resetDone">✖ সব রিসেট</button>
+  </div>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-info">
+      <span id="progressLabel">সম্পন্ন: 0 / 33</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
   </div>
 
   <div class="layout">
@@ -5871,6 +5950,116 @@
         if (card) card.open = true;
       });
     });
+
+    // ---- Mark as done feature ----
+    (function () {
+      const STORAGE_KEY = 'history-notes-done-v1';
+      const allCards = Array.from(document.querySelectorAll('.qcard'));
+      const totalCount = allCards.length;
+
+      function loadDone() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function saveDone(state) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) { /* ignore */ }
+      }
+
+      let doneState = loadDone();
+
+      function updateProgress() {
+        const doneCount = Object.values(doneState).filter(Boolean).length;
+        const pct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
+        const label = document.getElementById('progressLabel');
+        const pctEl = document.getElementById('progressPct');
+        const fill = document.getElementById('progressFill');
+        if (label) label.textContent = `সম্পন্ন: ${doneCount} / ${totalCount}`;
+        if (pctEl) pctEl.textContent = pct + '%';
+        if (fill) fill.style.width = pct + '%';
+      }
+
+      function setDone(id, isDone) {
+        doneState[id] = isDone;
+        saveDone(doneState);
+        applyVisual(id, isDone);
+        updateProgress();
+      }
+
+      function applyVisual(id, isDone) {
+        const card = document.getElementById(id);
+        const tocItem = document.querySelector(`.toc-item[data-target="${id}"]`);
+        if (card) card.classList.toggle('is-done', !!isDone);
+        if (tocItem) {
+          tocItem.classList.toggle('is-done', !!isDone);
+          const cb = tocItem.querySelector('.done-check');
+          if (cb) cb.checked = !!isDone;
+        }
+        if (card) {
+          const cb = card.querySelector('.qsummary .done-check');
+          if (cb) cb.checked = !!isDone;
+        }
+      }
+
+      // Inject checkbox into each TOC item
+      document.querySelectorAll('.toc-item').forEach(item => {
+        const id = item.getAttribute('data-target');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'done-check';
+        cb.title = 'সম্পন্ন হিসেবে চিহ্নিত করুন';
+        cb.checked = !!doneState[id];
+        cb.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        cb.addEventListener('change', function (e) {
+          setDone(id, cb.checked);
+        });
+        item.insertBefore(cb, item.firstChild);
+      });
+
+      // Inject checkbox into each question card summary
+      allCards.forEach(card => {
+        const id = card.id;
+        const summary = card.querySelector('.qsummary');
+        if (!summary) return;
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'done-check';
+        cb.title = 'সম্পন্ন হিসেবে চিহ্নিত করুন';
+        cb.checked = !!doneState[id];
+        cb.addEventListener('click', function (e) {
+          e.stopPropagation();
+        });
+        cb.addEventListener('change', function (e) {
+          setDone(id, cb.checked);
+        });
+        summary.insertBefore(cb, summary.firstChild);
+      });
+
+      // Reset button
+      const resetBtn = document.getElementById('resetDone');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+          if (!confirm('সব প্রশ্নের "সম্পন্ন" চিহ্ন মুছে ফেলতে চান?')) return;
+          doneState = {};
+          saveDone(doneState);
+          allCards.forEach(card => applyVisual(card.id, false));
+          updateProgress();
+        });
+      }
+
+      // Initial paint
+      allCards.forEach(card => applyVisual(card.id, !!doneState[card.id]));
+      updateProgress();
+    })();
   </script>
 
 </body>
